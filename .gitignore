@@ -1,0 +1,70 @@
+# compiled output
+/dist
+/node_modules
+/apps/catalog-service/node_modules
+/apps/catalog-service/dist
+/apps/fleet-service/node_modules
+/apps/fleet-service/dist
+/apps/order-service/node_modules
+/apps/order-service/dist
+/apps/api-gateway/node_modules
+/apps/api-gateway/dist
+/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv environment variable files
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+.cursor
+/data.txt
+
+/k8s/delivery-secrets.local.yaml
+/k8s/postgres-credentials.local.yaml
+/k8s/*-secret.local.yaml

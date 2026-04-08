@@ -1,0 +1,10 @@
+{
+  "name": "delivery-system",
+  "private": true,
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "studio:catalog": "npm run prisma:studio --prefix apps/catalog-service",
+    "studio:fleet": "npm run prisma:studio --prefix apps/fleet-service",
+    "studio:order": "npm run prisma:studio --prefix apps/order-service"
+  }
+}

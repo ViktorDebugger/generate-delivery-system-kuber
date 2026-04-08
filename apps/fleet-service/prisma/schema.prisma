@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Transport {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  couriers    Courier[]
+}
+
+model Courier {
+  id            String            @id @default(uuid())
+  name          String
+  isAvailable   Boolean           @map("is_available")
+  transportId   String?           @map("transport_id")
+  transport     Transport?        @relation(fields: [transportId], references: [id])
+  locations     CourierLocation[]
+}
+
+model CourierLocation {
+  id         String   @id @default(uuid())
+  courierId  String   @map("courier_id")
+  orderId    String?  @map("order_id")
+  latitude   Decimal  @db.Decimal(10, 7)
+  longitude  Decimal  @db.Decimal(10, 7)
+  recordedAt DateTime @default(now()) @map("recorded_at")
+  courier    Courier  @relation(fields: [courierId], references: [id], onDelete: Cascade)
+
+  @@index([courierId])
+  @@index([orderId])
+  @@map("courier_locations")
+}

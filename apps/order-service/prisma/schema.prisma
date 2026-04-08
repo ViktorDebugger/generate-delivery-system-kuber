@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+}
+
+model Client {
+  id         String   @id @default(uuid())
+  fullName   String   @map("full_name")
+  email      String   @unique
+  address    String?
+  latitude   Decimal? @db.Decimal(10, 7)
+  longitude  Decimal? @db.Decimal(10, 7)
+  ordersSent Order[]  @relation("OrderSender")
+  ordersRecv Order[]  @relation("OrderReceiver")
+}
+
+model Order {
+  id                   String         @id @default(uuid())
+  orderNumber          String         @map("order_number")
+  weight               Decimal        @db.Decimal(10, 3)
+  status               String
+  senderId             String         @map("sender_id")
+  receiverId           String         @map("receiver_id")
+  courierId            String?        @map("courier_id")
+  estimatedArrivalTime String?        @map("estimated_arrival_time")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  sender               Client         @relation("OrderSender", fields: [senderId], references: [id])
+  receiver             Client         @relation("OrderReceiver", fields: [receiverId], references: [id])
+  orderProducts        OrderProduct[]
+
+  @@index([createdAt])
+}
+
+model OrderProduct {
+  orderId   String @map("order_id")
+  productId String @map("product_id")
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@id([orderId, productId])
+}

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-sql
+  namespace: delivery
+data:
+  00-init-databases.sql: |
+    CREATE DATABASE catalog;
+    CREATE DATABASE fleet;
+    CREATE DATABASE orders;

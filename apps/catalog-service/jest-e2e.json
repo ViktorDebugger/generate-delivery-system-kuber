@@ -1,0 +1,13 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "globalSetup": "<rootDir>/test/global-setup-e2e.cjs",
+  "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
+  "setupFilesAfterEnv": ["<rootDir>/test/jest-e2e-setup-after-env.ts"],
+  "testEnvironment": "node",
+  "testTimeout": 120000,
+  "testMatch": ["<rootDir>/test/**/*.e2e-spec.ts"],
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  }
+}
