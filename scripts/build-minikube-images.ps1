@@ -57,7 +57,10 @@ if (-not $useMinikubeCli) {
     }
   }
   finally {
-    minikube docker-env -u | Invoke-Expression
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    minikube docker-env -u | ForEach-Object { Invoke-Expression $_ }
+    $ErrorActionPreference = $prevEap
   }
 }
 else {
