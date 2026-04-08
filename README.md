@@ -232,10 +232,196 @@ curl.exe -s -X POST http://localhost:3000/api/catalog/categories `
 
 ---
 
+## Kubernetes (Minikube): демонстраційний сценарій (Windows, PowerShell)
+
+Нижче — послідовність команд для звіту / здачі лаби: розгортання, перевірки, масштабування, балансування, видалення Pod, rolling update. Усі команди з **кореня** репозиторію (підстав свій шлях замість `D:\nulp\zhenyok\delivery-system`).
+
+**Передумови:** [Minikube](https://minikube.sigs.k8s.io/docs/start/), `kubectl`, Docker Desktop (або інший драйвер Minikube). Namespace у маніфестах: **`delivery`**.
+
+### 1. Запуск кластера та розгортання стеку
+
+```powershell
+cd D:\nulp\zhenyok\delivery-system
+minikube start
+.\scripts\build-minikube-images.ps1
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/lab-secrets.yaml
+kubectl apply -k k8s/
+```
+
+Дочекайся готовності (коли поди щойно створені, може знадобитися 1–3 хвилини):
+
+```powershell
+kubectl get pods,svc,deploy -n delivery
+kubectl rollout status deployment -n delivery
+```
+
+Очікування: у **`catalog-service`** **2** Pod (**`READY 2/2`** у Deployment), решта мікросервісів — по **1** репліці; **postgres**, **redis** — по **1**.
+
+### 2. Доступність сервісів з хоста (`port-forward`)
+
+`ClusterIP` з Windows напряму не відкритий; потрібен **проброс портів**. Кожна команда займає термінал (або запуск у фоні). Приклад — окремі вікна PowerShell:
+
+**Вікно A — api-gateway:**
+
+```powershell
+kubectl port-forward -n delivery svc/api-gateway 3000:3000
+```
+
+**Вікно B — catalog-service:**
+
+```powershell
+kubectl port-forward -n delivery svc/catalog-service 3001:3001
+```
+
+Перевірка (третє вікно або тимчасово зупинивши block у A/B):
+
+```powershell
+curl.exe -s http://127.0.0.1:3000/health
+curl.exe -s http://127.0.0.1:3001/health
+```
+
+Опційно **fleet** / **order**:
+
+```powershell
+kubectl port-forward -n delivery svc/fleet-service 3002:3002
+kubectl port-forward -n delivery svc/order-service 3003:3003
+```
+
+Альтернатива шлюзу без `port-forward` на 3000 (NodePort **30080**):
+
+```powershell
+$ip = minikube ip
+curl.exe -s "http://${ip}:30080/health"
+```
+
+### 3. Міжсервісна взаємодія (внутрішній DNS)
+
+Запити **зсередини** кластера до **catalog** і **order**:
+
+```powershell
+kubectl run -n delivery curl-tmp --rm -i --restart=Never --image=curlimages/curl:latest -- curl -sS http://catalog-service:3001/health
+kubectl run -n delivery curl-tmp --rm -i --restart=Never --image=curlimages/curl:latest -- curl -sS http://order-service:3003/health
+```
+
+Перевірка змінної **order → catalog** (URL з ConfigMap):
+
+```powershell
+kubectl exec -n delivery deploy/order-service -- printenv CATALOG_SERVICE_URL
+```
+
+Повне DNS-ім’я (приклад):
+
+```powershell
+kubectl run -n delivery curl-tmp --rm -i --restart=Never --image=curlimages/curl:latest -- curl -sS http://catalog-service.delivery.svc.cluster.local:3001/health
+```
+
+### 4. Підключення до Redis
+
+Ping з тимчасового пода:
+
+```powershell
+kubectl run -n delivery redis-tmp --rm -i --restart=Never --image=redis:7-alpine -- redis-cli -h redis ping
+```
+
+Очікування: **`PONG`**.
+
+Логи **catalog-service** (підключення кешу до Redis):
+
+```powershell
+kubectl logs -n delivery deploy/catalog-service --tail=200 --all-containers=true | Select-String -Pattern "CatalogCacheConnectivity|Redis"
+```
+
+Шукай рядок на кшталт **`Catalog cache: Redis connection OK.`**
+
+### 5. Масштабування (збільшення реплік)
+
+Підняти, наприклад, **4** репліки **catalog-service**:
+
+```powershell
+kubectl scale deployment/catalog-service -n delivery --replicas=4
+kubectl get pods -n delivery -l app=catalog-service
+kubectl rollout status deployment/catalog-service -n delivery --timeout=300s
+kubectl wait --for=condition=ready pod -l app=catalog-service -n delivery --timeout=300s
+```
+
+Повернути як у маніфесті (**2** репліки):
+
+```powershell
+kubectl scale deployment/catalog-service -n delivery --replicas=2
+```
+
+### 6. Балансування навантаження (кілька реплік)
+
+У кластері для **catalog** увімкнено **`DEV_POD_IDENTITY=true`**: **`GET /dev/pod-identity`** повертає **`hostname`** (ім’я Pod). Потрібні **≥2** репліки та **port-forward** на **catalog** (див. п. 2, порт **3001**).
+
+```powershell
+1..24 | ForEach-Object { curl.exe -s "http://127.0.0.1:3001/dev/pod-identity" }
+(1..30 | ForEach-Object { curl.exe -s "http://127.0.0.1:3001/dev/pod-identity" }) | Sort-Object -Unique
+```
+
+У другому виводі очікуються **різні** значення **`hostname`** — трафік через **Service** розподіляється між Pod.
+
+**Кеш `GET /api/categories/:id`**: кеш спільний через **Redis**. Після POST (отримай **`$id`**) два GET по **`/api/categories/$id`** з **тим самим** UUID; для стабільного ефекту переконайся, що **`$id`** не порожній (див. розділ HTTP вище). Якщо **Redis вимкнено** в Pod, кеш лише in-memory — при кількох репліках запити можуть йти на **різні** Pod і час обох GET залишиться схожим.
+
+### 7. Видалення Pod і відновлення
+
+```powershell
+kubectl get pods -n delivery -l app=catalog-service
+kubectl delete pod <імя-одного-пода> -n delivery
+kubectl get pods -n delivery -l app=catalog-service
+kubectl get endpoints catalog-service -n delivery
+```
+
+**ReplicaSet** створить новий Pod; **Service** **`catalog-service`** лишається, оновлюються **Endpoints**.
+
+### Rolling update (новий tag образу)
+
+Збірка образу з тегом **v2** і оновлення Deployment:
+
+```powershell
+minikube image build -t delivery-system/catalog-service:v2 -f apps/catalog-service/Dockerfile apps/catalog-service
+kubectl set image deployment/catalog-service catalog-service=delivery-system/catalog-service:v2 -n delivery
+kubectl rollout status deployment/catalog-service -n delivery
+kubectl rollout history deployment/catalog-service -n delivery
+```
+
+Відкат на попередню ревізію:
+
+```powershell
+kubectl rollout undo deployment/catalog-service -n delivery
+kubectl rollout status deployment/catalog-service -n delivery
+```
+
+Після лаби образи з тегом **`local`** знову узгоджені з YAML, якщо повернеш **`kubectl set image … :local`** або перезастосуєш маніфести.
+
+### Перегляд згенерованих маніфестів (Kustomize)
+
+```powershell
+kubectl kustomize k8s/
+```
+
+### Зупинка
+
+```powershell
+minikube stop
+```
+
+(Образи всередині Minikube збережуться до **`minikube delete`**.)
+
+### Для розділу «Аналіз» у звіті (орієнтири)
+
+- **Deployment** у Kubernetes керує ReplicaSet і бажаною кількістю Pod, оновленнями (rolling update) та історією ревізій; **docker-compose** масштабує через `deploy.replicas` лише в межах одного хоста без вбудованої історії rollout/undo на рівні API кластера.
+- **Service (ClusterIP)** дає стабільний DNS і IP всередині кластера; трафік розподіляється між Pod (kube-proxy). У compose сервіси резолвляться іменами в одній мережі Docker **на одному вузлі**.
+- **Оркестрація (K8s)** додає самовідновлення Pod, горизонтальне масштабування, rolling update, декларативні маніфести та ізоляцію namespace — це дорожче в навчанні, ніж один compose-файл, але потрібно для продакшен-подібних сценаріїв.
+
+---
+
 ## Відповідність типовим лабораторним завданням (коротко)
 
 | Задача | Як закрито в репозиторії |
 |--------|---------------------------|
+| Kubernetes / Minikube (лаба) | Каталог **`k8s/`**, **`lab-secrets.yaml`**, скрипт **`scripts/build-minikube-images.ps1`**, розділ **«Kubernetes (Minikube): демонстраційний сценарій»** вище. |
 | Кеш мікросервісу | **catalog-service**, GET `/api/categories/:id` (NestJS `@nestjs/cache-manager` + Redis, не Spring). |
 | Redis у Docker | Сервіс **`redis`** у `docker-compose.yml`. |
 | Політика очищення | TTL (~90 с) + інвалідація ключа після зміни/видалення категорії. |
