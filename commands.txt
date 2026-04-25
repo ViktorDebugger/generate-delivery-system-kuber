@@ -1,0 +1,48 @@
+minikube delete
+minikube start --kubernetes-version=v1.30.6
+
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/lab-secrets.yaml
+kubectl apply -k k8s/
+
+minikube image build -t delivery-system/api-gateway:local ./apps/api-gateway
+minikube image build -t delivery-system/catalog-service:local ./apps/catalog-service
+minikube image build -t delivery-system/fleet-service:local ./apps/fleet-service
+minikube image build -t delivery-system/order-service:local ./apps/order-service
+
+kubectl rollout status deployment -n delivery
+kubectl get pods,svc,deploy -n delivery
+
+kubectl port-forward -n delivery svc/api-gateway 3000:3000
+kubectl port-forward -n delivery svc/catalog-service 3001:3001
+kubectl port-forward -n delivery svc/fleet-service 3002:3002
+kubectl port-forward -n delivery svc/order-service 3003:3003
+kubectl port-forward -n delivery svc/postgres 5432:5432
+
+npm run studio:catalog
+npm run studio:fleet
+npm run studio:order
+
+docker compose up -d postgres
+npm test
+
+kubectl exec -it -n delivery deploy/redis -- redis-cli ping
+
+
+
+kubectl run -n delivery curl-tmp --rm -i --restart=Never --image=curlimages/curl:latest -- curl -sS http://catalog-service:3001/health
+
+kubectl run -n delivery redis-tmp --rm -i --restart=Never --image=redis:7-alpine -- redis-cli -h redis ping
+$json = curl.exe -s -X POST http://localhost:3001/api/categories -H "Content-Type: application/json" -d "{\"name\":\"Test\"}"
+$id = ($json | ConvertFrom-Json).id
+$id
+curl.exe -w "`nTOTAL_TIME %{time_total}s`n" -s -o NUL "http://localhost:3001/api/categories/$id"
+
+kubectl get pods -n delivery
+kubectl scale deployment/catalog-service --replicas=4 -n delivery
+kubectl get pods -n delivery
+
+kubectl delete pod catalog-service-f96b99d9-rb5zz -n delivery
+kubectl get pods -n delivery
+
+kubectl rollout status deployment/catalog-service -n delivery --timeout=180s
